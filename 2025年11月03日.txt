@@ -1,0 +1,103 @@
+一、前言
+    1、前面阶段欠缺的内容先放下，集中精力攻克当天的内容，后面学习中遇到再有针对性的巩固；尽最大努力做到：今日事、今日毕
+        完成当天任务后微信上告诉我
+    2、福利：一对一辅导、沟通、诊断
+    3、后面本阶段安排
+        Spring：3天
+            IoC
+            AOP
+            声明式事务
+        SpringMVC：3天
+        Mybatis：2天
+        SSM整合：1天
+        SpringBoot：2天
+        Linux：2天
+        Redis：2天
+        Git：1天
+        硅谷链习室：7天（单一架构SSM+大模型接口调用）
+
+二、课堂笔记
+    1、Spring
+        公司：https://spring.io（这里 io 是开发者平台的意思）
+    2、产品名称：Spring Framework
+    3、IoC 概念
+        (1)理解容器的概念
+        (2)IoC：Inversion of Control反转控制<记住>
+            ●应用场景：传统获取资源的方式（自己做饭）
+                public class XxxServlet extends HttpServlet {
+
+                    // 我们需要的资源：private XxxService xxxService
+                    // 实际注入的资源：new XxxServiceImpl();
+                    private XxxService xxxService = new XxxServiceImpl();
+
+                }
+            ●应用场景：IoC获取资源的方式（点外卖）
+                @Controller
+                public class XxxController {
+                    // 我们仅仅只负责把自己需要什么声明出来（被动接受），不关心资源创建的细节
+                    // 框架（环境）负责：创建对象、注入资源（具体工作），负责资源创建的全部细节
+                    @Autowired
+                    private XxxService xxxService;
+                }
+        (3)DI：Dependency Injection，翻译过来是依赖注入
+            IoC：理念
+            DI：IoC 理念的具体实现方式
+            现在我们可以认为：IoC 和 DI 是一样的
+        (4)疑问：就是 new XxxServiceImpl() 这事儿也不难呀，有什么必要这么大费周章？
+            答：①实际项目开发时，有的组件创建过程极其复杂，代码需要几百、上千行；整个项目中这样复杂的组件有几十上百个
+            ②后面学了 AOP、声明式事务就会知道，IoC 不仅是负责创建对象、管理对象的生命周期而且能够通过 AOP、声明式事务的方式对对象原本的功能进行增强
+                @Transactional
+                public void updateXxx() {}
+                加上事务注解：@Transactional就让原来没有事务功能的普通方法，有了事务（开启事务、提交事务、回滚事务……）
+            ③将来使用各种框架都是以 Spring 为基础的，而 Spring 又是以 IoC 容器为基础
+        (5)Spring IoC 相关 API
+            ①BeanFactory接口：Spring 内部负责创建对象的工厂<了解>
+            ②ApplicationContext接口：代表 IoC 容器
+                以后只要在 Spring 环境范围内看到某个类名称中包含：ApplicationContext，那么这个类一定是 IoC 容器
+                例如：ClassPathXmlApplicationContext、FileSystemXmlApplicationContext、ConfigurableApplicationContext、WebApplicationContext……
+        (6)疑问：IoC 和 “容器” 是怎么联系到一起的？
+            IoC 要实现“反转控制”，首先需要创建对象，然后把对象放入 “容器” 中，接下来再根据 “需要注入组件的声明” 在 “容器” 中找到组件执行注入
+            简单来说：“容器” 是 IoC 实现自动注入的基础
+    4、操作
+        (1)创建工程
+            方式一：基于 IDEA 提供的向导
+                创建完成后，把 SpringBoot 的版本改成 3.3.12
+            方式二：手动创建
+        (2)pom.xml解析
+            使用 SpringBoot 的功能，需要继承 spring-boot-starter-parent，具体 SpringBoot 使用哪个版本就是由继承哪个 parent 工程决定的
+                    <parent>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-starter-parent</artifactId>
+                        <!-- 修改要使用的 SpringBoot 版本就是在这里 version 标签修改 -->
+                        <version>3.3.12</version>
+                        <relativePath/> <!-- lookup parent from repository -->
+                    </parent>
+            依赖列表中，我们发现一组依赖都是以 spring-boot-starter- 开头的，这是 SpringBoot 中的『场景启动器』
+            场景启动器：把当前场景所需要的全部 jar 包都导入，而且这些 jar 包还是 SpringBoot 经过严格测试的，保证可以正常使用
+            build 标签是用来配置和构建过程相关的事情
+            build/plugins：构建过程中用到的插件
+            build/plugins/plugin：具体某一个插件
+                maven-compiler-plugin：Maven 提供的一个负责 Java 源程序编译的插件
+                spring-boot-maven-plugin：SpringBoot 提供的一个特殊的打包插件（功能后面会讲），这个插件目前用不上
+        (3)SpringBoot 工程的目录结构
+            ●主启动类：Module16SpringIoCApplication，因为它加了 @SpringBootApplication 注解
+                ○要求1：必须有一个 main() 方法作为整个应用执行时的入口
+                ○要求2：main() 方法中必须调用 SpringApplication.run(传入参数)
+                    参数一：主启动类.class
+                    参数二：main() 方法的 args 参数
+                ○启动整个 SpringBoot 工程就运行主启动类中的 main() 方法即可
+            ●主配置文件：application.properties（这个名字不要修改）
+            ●static 目录：作为一个 Web 工程存放静态资源
+                HTML 文件
+                CSS 文件
+                JavaScript 文件
+                图片……
+            ●templates 目录：存放模板文件
+                模板文件在执行后端渲染时才会使用，现在我们都是前端渲染，所以这个目录就用不上了
+            ●测试类：Module16SpringIoCApplicationTests
+                可以直接写 junit 测试程序
+        (4)手动创建工程
+            [1]pom.xml
+                ●继承 SpringBoot 的父工程：spring-boot-starter-parent
+                ●加入依赖列表
+            [2]按照要求创建主启动类（要求和前面说的一样）

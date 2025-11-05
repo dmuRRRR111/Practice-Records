@@ -1,0 +1,264 @@
+一、今天内容总体介绍
+    1、持久化层，Dao中的代码：使用 JDBCTemplate
+    2、事务概念回顾复习
+    3、声明式事务
+        (1)准备案例
+        (2)通过标记 @Transactional 注解让事务生效
+        (3)事务属性
+        (4)事务原理
+    4、掌握要求
+        (1)JDBCTemplate暂时使用，现阶段会调用方法实现功能即可
+        (2)确保自己对于基础的事务概念能够用自己的话表述
+            程序中为什么要使用事务？
+
+            事务的ACID四个属性分别是什么意思
+
+            事务的三个并发问题
+
+            事务的四个隔离级别
+
+            JDBC技术体系中，事务操作的关键代码
+                开启事务
+                提交事务
+                回滚事务
+        (3)理解声明式事务概念
+        (4)会使用 @Transactional 注解
+            标记在方法上
+            标记在类上
+        (5)事务属性（存档）
+            @Transactional 注解 readOnly 属性
+            @Transactional 注解 timeout 属性
+            @Transactional 注解 rollbackFor 属性、noRollbackFor 属性
+            @Transactional 注解 isolation 属性
+            @Transactional 注解 propagation 属性
+        (6)声明式事务底层原理（面试）
+            事务管理器：封装事务操作的具体方法
+            事务拦截器：通过AOP切面机制找到加了事务注解的目标方法
+
+二、JDBCTemplate
+    1、搭建环境
+        (0)准备好一个用于测试的数据库
+        (1)建立数据库连接：使用 SpringBoot 内置的数据源
+            ●导入依赖：
+                MySQL 驱动
+                spring-boot-starter-jdbc
+            ●主配置文件配置数据源（具体配置细节参照代码）
+            ●发现：SpringBoot 内置的数据源名称是 HikariDataSource
+        (2)建立数据库连接：使用 DruidDataSource 数据源
+            ●额外增加依赖：com.alibaba:druid:1.2.21
+            ●主配置文件中额外增加一个配置项：
+                spring.datasource.type=com.alibaba.druid.pool.DruidDataSource
+        (3)直接把 JdbcTemplate 组件对象装配到有需要的地方使用
+            提问：为什么可以直接装配进来使用？难道不需要先放入 IoC 容器吗？
+            回答：并不是没有放，而是 SpringBoot 自动化配置机制替我们完成了把组件对象放入 IoC 容器的操作
+    2、具体 API 用法
+        通用增删改：jdbcTemplate.update(sql, "jdbcTiger", 666, 666.66)
+        查询实体类集合：jdbcTemplate.query(sql, new BeanPropertyRowMapper<>(Tiger.class), 100)
+        查询单个实体类对象：jdbcTemplate.queryForObject(sql, new BeanPropertyRowMapper<>(Tiger.class), 20011)
+        查询单一值：jdbcTemplate.queryForObject(sql, Double.class);
+
+三、事务概念回顾
+    1、为什么需要使用事务？
+        默认情况下，SQL语句在执行过程中，会自动提交事务
+        问题是在实际项目功能中，往往一个业务逻辑包含多条 SQL 语句，所以我们从业务的角度需要这些 SQL 语句同样能够作为一个完整的逻辑单元
+            要生效就都生效
+            要不生效就都不生效
+        最终的目标是保证数据库中的数据从整体上、逻辑上是正确的
+        举例：小张给小王转账
+            小张账户余额：1000
+            小王账号余额：1000
+            小张给小王转账：500
+            小张账户余额：1000 - 500 = 500
+            小王账户余额：1000 + 500 = 1500
+            在整个转账功能中，减 500 和加 500 同属于一个业务功能，我们要保证它们在逻辑上是一个整体
+        举例：用户购买商品后订单结算
+            保存订单信息
+            保存订单详情
+            增加销量数据
+            减少库存数据
+            增加用户积分
+            减少用户账户余额
+        技术上需要解决的一个点：SQL 语句并不知道谁和谁属于同一个逻辑的整体，所以需要我们人为来做这个设置
+        具体操作：通过我们手动开启事务、成功后提交事务、失败后回滚事务，人为的把多条SQL语句划分到一个逻辑单元中
+
+    2、ACID
+        Atomicity 原子性：放在一个事务中的多条SQL语句，它们逻辑上是一个整体，缺一不可；缺少任何一条SQL语句都无法完成业务功能
+        Consistency 一致性：事务执行之前和执行之后，都要保证数据库中数据是正确的
+        Isolation 隔离性：事务在并发执行的过程中，能够在一定程度上彼此隔离，互不干扰
+        Durability 持久性：事务一旦提交之后，SQL语句所做的修改就永久的保存到数据库中，无法撤销、无法回滚
+
+    3、并发问题
+        脏读：T1读取了T2尚未提交的修改，然后T2回滚了，T1之前读取到的就是一个错误的数据
+        不可重复读：T1在事务执行过程中两次读取同一个数据不一致，但这两个数据都是正确的，原因是T1执行过程中T2修改了这个数据并提交了
+        幻读：T1在事务执行过程中，数据库表中的数据条数发生了变化
+
+    4、隔离级别
+        读未提交：允许当前事务读取其它事务尚未提交的修改，什么并发问题都解决不了，但是效率最高
+        读已提交：要求当前事务只能读取其它事务已提交的修改，可以解决脏读问题
+        可重复读：要求当前事务执行过程中，不能有其它事务修改当前事务要读取的数据，可以解决脏读、不可重复读问题
+        串行化：当前事务在执行过程中锁定整个表，可以解决全部并发问题，但是效率非常低
+
+    5、编程式事务：具体事务操作需要我们自己编程来实现
+        try {
+
+            // 获取数据库连接
+            Connection conn = ...;
+
+            // 开启事务：关闭事务的自动提交
+            conn.setAutoCommit(false);
+
+            // 核心操作：执行 SQL 语句
+
+            // 提交事务
+            conn.commit();
+
+        } catch(Exception e){
+
+            // 回滚事务
+            conn.rollBack();
+
+        } finally{
+
+            // 释放数据库连接
+
+        }
+
+四、声明式事务
+    1、概念
+        我们只需要“声明”，告诉框架什么地方需要事务即可，具体事务操作由框架来完成
+
+    2、实现
+        哪个方法需要事务，就在哪个方法上标记 @Transactional 注解
+
+    3、事务属性
+        (1)只读属性
+        效果：在开发时，我们针对查询操作把事务属性 readOnly 设置为 true，就会告诉数据库本次操作是只读的
+        好处：数据库知道本次执行 SQL 语句是只读的，那么就不需要为“增删改”操作做额外的准备，可以提升一些性能
+        增删改操作设置为只读后会抛出异常：Connection is read-only. Queries leading to data modification are not allowed
+
+        (2)在类上标记 @Transactional 注解
+        效果：相当于标记在了每一个方法上，而且类上注解中设置的属性值会被方法继承
+        如果具体某一个方法不适合使用类上统一的设定，可以在方法上单独设置，方法上设置的事务属性就会覆盖类上的设置
+
+        (3)超时属性
+        要解决的问题：有的时候事务方法执行过程中由于某种原因卡住，导致占用的资源释放不出来，其它方法无法获取到这个资源
+        解决的方式：给事务方法设置一个超时时间，一旦方法执行超过这个时间，就强制回滚，把资源释放出来，避免整个应用程序长时间卡住
+        @Transactional 注解中的 timeout 属性设置超时时间，时间单位是秒
+        超时后的异常信息：org.springframework.transaction.TransactionTimedOutException: Transaction timed out: deadline was Wed Nov 05 14:09:13 CST 2025
+
+        (4)回滚或不回滚的异常
+        默认情况：Spring 只针对运行时异常和 Error 执行回滚，编译时异常不回滚
+        设置方式：rollbackFor = Exception.class
+        问题：rollbackFor 和 noRollbackFor 同时存在时以谁为准？
+        回答：在大范围内把小范围的设置排除掉，如果这两个属性设置的范围一致，那么 rollbackFor 胜出
+
+        (5)事务的隔离级别
+        数据库本身有默认的隔离级别，例如：MySQL 默认的隔离级别是可重复读，所以绝大部分情况下就遵循数据库本身默认的隔离级别就可以了
+        通常不需要在 Java 代码层面修改隔离级别
+        如果确实有需要修改可以设置 isolation 属性
+
+        (6)事务的传播行为
+        当前事务方法，对于前面方法已经打开的事务如何对待：
+        REQUIRED（默认值）：要求当前事务方法必须在事务中运行，如果存在前面方法已经开启的事务那就在这个事务中运行；如果没有就自己开新事务
+        REQUIRES_NEW：不管有没有已经开启的事务，都在自己新开启的事务中运行
+
+五、事务底层原理
+    问题1：谁负责执行具体的事务操作？
+    答：事务管理器
+        顶级接口：TransactionManager
+        实际使用：DataSourceTransactionManager
+
+    问题2：如何找到带有事务的目标方法？如何把事务操作在调用目标方法的过程中插入进去？
+    答：基于 AOP 技术查看目标方法是否被增强
+    作为事务方法是被事务拦截器增强的，所以在 CglibAopProxy 类中就会把事务拦截器放入执行链对象中
+    接下来就通过事务拦截器调用目标方法，在这个过程中，事务拦截器会通过事务信息对象获取事务管理器
+    调用事务管理器的方法执行事务操作
+
+六、Spring IoC 面试相关内容
+    1、FactoryBean
+        (1)简介
+        // FactoryBean 总体功能：面对有些对象创建过程非常繁琐、代码量很大，进行封装
+        // 典型的应用场景：Spring 整合其它框架或第三方库，例如 SqlSessionFactoryBean
+        // 由于 Spring 整合几乎所有第三方技术都是使用 FactoryBean，所以实际上 FactoryBean 就成了这个领域的标准和统一的规范
+        public interface FactoryBean<T> {
+            String OBJECT_TYPE_ATTRIBUTE = "factoryBeanObjectType";
+
+            @Nullable
+            // 返回值：最终创建完成并且要放入 IoC 容器中的对象
+            T getObject() throws Exception;
+
+            @Nullable
+            // 返回对象类型
+            Class<?> getObjectType();
+
+            // 返回对象是否单例，默认单例
+            default boolean isSingleton() {
+                return true;
+            }
+        }
+
+        (2)SqlSessionFactoryBean
+        ●用途：Spring 提供的一个类，用来整合 Mybatis
+        ●SqlSessionFactoryBean 最终创建的对象：SqlSessionFactory
+        ●SqlSessionFactory 的作用生产 SqlSession 对象
+        ●SqlSession 对象代表 Mybatis 和数据库之间交互时的会话
+
+        (3)我们自己用一下体会体会（细节参考代码）
+
+    2、Bean的作用域
+        (1)默认情况
+            IoC 容器中的 bean 对象都是单实例的，在 IoC 容器初始化的过程中创建对象
+        (2)通过 @Scope 注解设置 bean 的作用域
+            @Scope("singleton") 单例
+            @Scope("prototype") 多例
+        (3)多实例情况
+            在获取 bean 对象时才创建对象，每获取一次就创建一个对象
+        (4)实际开发中的情况
+            IoC 容器中存放的组件都是要负责项目中的具体功能的，就像是一栋房子的支柱、大梁，所以一般来说，这样的对象保持单例节约内存
+            而我们的业务数据，例如：List<Tiger>、Tiger对象本身……根据业务方法执行的情况创建对象，通常是多实例
+
+    3、构造器注入、set() 方法注入
+        (1)提出问题
+        以前的注入组件的做法：
+            @Autowired
+            private Xxx xxx;
+        如果在注入过程中，我们希望执行代码，例如：打印日志，就做不到了
+        所以使用构造器或 set() 方法注入就可以有地方写代码
+
+        (2)构造器注入（不需要额外加注解）
+    public BananaController(BananaService bananaService) {
+        System.out.println("☆☆☆☆☆☆☆☆BananaController 构造器执行☆☆☆☆☆☆☆☆");
+        this.bananaService = bananaService;
+    }
+
+        (3)set()方法注入
+    private OrangeService orangeService;
+
+    @Autowired
+    public void setOrangeService(OrangeService orangeService) {
+        System.out.println("○○○○○○○○○○OrangeController set方法执行了○○○○○○○○○○");
+        this.orangeService = orangeService;
+    }
+
+七、今天的总结和作业
+    1、JdbcTemplate 部分，只要能看懂就不用专门拿出时间练习
+    2、事务操作部分（学习方法：写代码、运行、看结果）
+        搭建环境
+        准备测试案例
+        加入@Transactional注解让事务生效
+    3、事务理论部分（学习方法：小黄鸭）
+        事务属性之只读
+        事务属性之超时
+        事务属性之回滚、不回滚异常
+        事务属性之隔离级别
+        事务属性之传播行为
+        事务底层原理：具体事务操作由事务管理器负责
+        事务底层原理：找到目标方法加入事务操作由事务拦截器负责
+    4、IoC 面试相关
+        FactoryBean 理解它的作用，具体 getObject() 方法返回值就是从 IoC 容器中获取到的对象
+        Bean作用域
+            默认情况：单例，在 IoC 初始化时创建对象
+            @Scope("prototype")修改之后：多例，在获取 bean 时才创建对象，获取一次创建一个
+    5、构造器注入、set()方法注入
+        知道有这种注入方式
+    6、bean的生命周期：表述完整的生命周期各个环节
