@@ -1,0 +1,193 @@
+一、循环依赖
+    1、概念
+        IoC 容器中 A 对象需要装配 B 对象
+
+    2、限制条件
+        如果基于构造器注入，创建对象的同时需要注入对方组件，那么此事就是无解的
+        如果想要解决问题必须把创建对象和注入组件两个动作分开
+            创建对象：调用无参构造器
+            注入组件：通过成员变量或 set() 方法注入
+        即使把两个动作分开，Spring 默认情况下仍然不允许这么做，要解除限制必须设置：
+            spring.main.allow-circular-references=true
+
+    3、开发建议
+        尽可能不要让 bean 对象之间出现循环依赖的结构，这不是一种好的结构
+
+    4、三级缓存
+        一级缓存（singletonObjects 成品区）：存放已完成 bean 装配过程的对象
+        二级缓存（earlySingletonObjects 半成品区）：存放已经创建好的 bean 对象，但是还没有完成装配
+        三级缓存（singletonFactories 工厂区）：存放创建 bean 对象的工厂对象
+            bean 对象起初调用无参构造器创建出来的对象还被放在工厂中，想要得到这个对象（刚创建，尚未初始化）只能通过工厂来获取
+            这就是所谓的：获取 bean 对象的早起引用
+
+    5、双检查锁
+        IoC 需要保证 bean 对象在默认情况下是单例的，所以同样需要双检查锁机制保证单例
+        同步锁外部检查：判空检查（把不需要进入同步锁的线程排除，避免多余的线程在锁上等待浪费性能）
+        同步锁内部检查：判空检查（在锁内部通过第二次检查确保要创建的对象是单例的）
+
+二、SpringMVC 请求映射
+    1、@RequestMapping注解
+        可以标记在方法上或者是类上
+        value 属性：指定映射的路径
+        method 属性：指定映射的请求方式
+    2、简化版注解
+        @GetMapping
+        @PutMapping
+        @PostMapping
+        @DeleteMapping
+    3、路径映射
+        精确匹配：实际开发时使用
+        模糊匹配：在拦截器中使用
+            /* 匹配单层
+            /** 匹配多层
+
+三、SpringMVC 接收前端发送的数据
+    1、前端发送数据的形式三种
+        (1)请求参数
+            --------------------------------------------------------------
+            使用超链接发送请求参数：
+            <a href="/aaa/bbb/ccc?stuName=tom&stuAge=33">xxx</a>
+
+            --------------------------------------------------------------
+            使用表单发送请求参数：
+            <form action="/aaa/bbb/ccc" method="post">
+                学生姓名：<input type="text" name="stuName" /><br/>
+                学生年龄：<input type="text" name="stuAge" /><br/>
+                可选课程：<input type="checkbox" name="subject" value="Java" />
+                <input type="checkbox" name="subject" value="PHP" />
+                <input type="checkbox" name="subject" value="MySQL" />
+                <button type="submit">提交</button>
+            </form>
+            请求体中的数据格式：
+            stuName=aaa&stuAge=66&subject=Java&subject=PHP
+
+        (2)路径变量
+            前端发送请求时路径实际值举例：
+                /fruit/apple/666
+                /fruit/orange/777
+                /fruit/banana/888
+                /fruit/grape/999
+                /fruit/watermelon/111
+
+            后端在请求映射的路径中给路径变量设置名称：
+                /fruit/{fruitName}/{fruitPrice}
+
+        (3)请求体 JSON
+            {
+                "stuId":666,
+                "stuName":"tom"
+            }
+
+    2、@RequestParam 注解
+        value 属性：指定请求参数的名称，请求参数名称和形参名称一致，value 属性可以省略；如果没有其它属性设置，那么整个 @RequestParam 注解也可以省略
+        required 属性：
+            默认值 true：表示当前请求参数必须有，如果没有就会返回 400 错误
+            false：表示当前请求参数不是必须有
+        defaultValue 属性：给当前请求参数设置默认值
+
+    3、一名一值
+        @RequestParam(required = false) String subject
+    4、一名多值
+        @RequestParam("team") List<String> teamList
+
+    5、使用实体类接收请求参数
+        应用场景：前端发送多个请求参数，要是一个一个写 @RequestParam 注解太麻烦，所以把所有请求参数都封装到一个实体类对象中
+        底层：
+            SpringMVC 调用无参构造器创建实体类对象
+            用请求参数名称和实体类对象的属性名进行对应
+            调用实体类对象的 setXxx() 方法注入请求参数的值
+        实体类对象的属性名：不是成员变量的名字，而是 getXxx()、setXxx() 方法的方法名定义的
+            getXxx()、setXxx() 方法的方法名把 get、set 去掉，剩下的部分首字母小写，就得到了属性名
+            getStuName() ---> getStuName ---> StuName ---> stuName
+        实体类对象的属性名并不要求和成员变量名一致，甚至可以在成员变量之外额外提供 getXxx()、setXxx() 方法
+        具体代码写法：就是仅仅在 Controller 方法形参这里声明实体类类型的形参，这里什么注解都不写！！！
+            saveStudent(Student student)
+
+    6、请求体 JSON 接收方式：@RequestBody 实体类形参
+        saveFlower(@RequestBody Flower flower)
+
+    7、对比两个相似注解
+        前端给后端在请求体中发送 JSON 数据 ---> @RequestBody 实体类类型形参（数据输入）
+                                                   执行业务逻辑计算
+                                                   得到方法返回值
+        把方法返回值作为响应体返回给前端 <---- @ResponseBody 标记当前方法（数据输出）
+
+    8、@ResponseBody
+        方法返回值是单一值类型：响应体就是这个单一值本身
+        方法返回值是多值复合类型：响应体就是把返回值转换为 JSON 字符串
+            实体类对象：Student、Flower……
+            数组
+            集合
+            ……
+
+    9、底层机制
+        @RequestBody 和 @ResponseBody 底层依靠 HttpMessageConverter 机制
+
+    10、路径变量
+        (1)概念：把要发送给后端的数据放在路径中，作为路径的一部分
+        (2)接收：使用 @PathVariable 注解来接收
+        (3)举例：
+            前端发送请求的实际路径（包含具体数据）：
+                /book/bookName01/foo/1000/bar
+                /book/bookName02/foo/2000/bar
+                /book/bookName03/foo/3000/bar
+            接收时，路径映射方式：
+                /book/{bookName}/foo/{bookPrice}/bar
+            具体接收数据的代码：
+                @PathVariable("bookName") String bookName,
+                @PathVariable("bookPrice") Double bookPrice
+        (4)细节：如果路径变量名称和形参名称一致，@PathVariable 注解中就可以省略名称
+                @PathVariable String bookName,
+                @PathVariable Double bookPrice
+
+三、获取原生对象
+    1、概念
+        SpringMVC 作为表述层框架，完全有可能需要使用到原生的 HttpServletRequest、HttpServletResponse、HttpSession、ServletContext…… 对象
+
+    2、如何获取呢？
+        (1)HttpServletRequest、HttpServletResponse、HttpSession声明形参获取
+        (2)ServletContext 不能通过声明形参来获取
+            [1]通过原生 HttpServletRequest 或 HttpSession 对象获取
+            [2]使用 @Autowired 自动装配进来
+
+四、@RestController
+    使用 @RestController 注解替换 @Controller 注解
+    @RestController = @Controller + @ResponseBody
+
+    @ResponseBody 注解加在类上，相当于给每个方法都进行了标记
+
+※番外：
+    400 错误通常和数据输入相关，例如：必须有的请求参数没有提供、无法完成类型转换、校验规则验证失败
+
+五、作业
+    1、循环依赖：首先先做到可以理解，然后抽空背一下面试答题的话术
+    2、SpringMVC 请求映射
+        会用@RequestMapping注解
+        会用@GetMapping注解
+        会用@PostMapping注解
+        会用@PutMapping注解
+        会用@DeleteMapping注解
+        理解/*和/**的匹配规则
+    3、接收数据
+        请求参数接收方式一：@RequestParam注解
+            一名一值
+            一名多值
+        请求参数接收方式二：实体类
+            注意请求参数名称和实体类属性名对应
+
+        请求体 JSON：@RequestBody 实体类
+
+        路径变量：@PathVariable
+
+    4、@ResponseBody
+        理解注解本身的作用
+        从 @ResponseBody 标记在方法上到标记在类上，到 @RestController 的演变过程
+
+    5、获取原生 API：把下面对象挨个获取到打印出来
+        HttpServletRequest
+        HttpServletResponse
+        HttpSession
+        ServletContext
+
+    6、获取请求消息头
+    7、获取Cookie的value值
